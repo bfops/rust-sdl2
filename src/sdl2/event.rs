@@ -108,6 +108,39 @@ impl ::EventSubsystem {
         }
     }
 
+    /// Like `peek_events`, but removes the events from the queue.
+    /// This does _not_ pump the event queue.
+    pub fn pop_events<B>(&self, max_amount: u32) -> B
+    where B: FromIterator<Event>
+    {
+        unsafe {
+            let mut events = Vec::with_capacity(max_amount as usize);
+
+            let result = {
+                let events_ptr = events.as_mut_ptr();
+
+                ll::SDL_PeepEvents(
+                    events_ptr,
+                    max_amount as c_int,
+                    ll::SDL_GETEVENT,
+                    ll::SDL_FIRSTEVENT,
+                    ll::SDL_LASTEVENT
+                )
+            };
+
+            if result < 0 {
+                // The only error possible is "Couldn't lock event queue"
+                panic!(get_error());
+            } else {
+                events.set_len(result as usize);
+
+                events.into_iter().map(|event_raw| {
+                    Event::from_ll(event_raw)
+                }).collect()
+            }
+        }
+    }
+
     /// Pushes an event to the event queue.
     pub fn push_event(&self, event: Event) -> Result<(), String> {
         match event.to_ll() {
@@ -163,7 +196,7 @@ impl ::EventSubsystem {
         const ERR_NR:u32 = ::std::u32::MAX - 1;
 
         match result {
-            ERR_NR => { 
+            ERR_NR => {
                 Err("No more user events can be created; SDL_LASTEVENT reached"
                     .to_owned())
             },
@@ -236,14 +269,14 @@ impl ::EventSubsystem {
 
         let user_event_id = *match cet.type_id_to_sdl_id.get(&type_id) {
             Some(id) => id,
-            None => { 
+            None => {
                 return Err(
                     "Type is not registered as a custom event type!".to_owned()
                 );
             }
         };
-        
-        let event_box = Box::new(event); 
+
+        let event_box = Box::new(event);
         let event = Event::User {
            timestamp: 0,
            window_id: 0,
